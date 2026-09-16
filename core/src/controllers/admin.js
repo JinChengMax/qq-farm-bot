@@ -62,6 +62,7 @@ const { registerAdminSettingsRoutes } = require("./admin-settings-routes");
 const { registerAdminShopRoutes } = require("./admin-shop-routes");
 const { createAdminSessionManager } = require("./admin-session-manager");
 const { registerAdminSystemRoutes } = require("./admin-system-routes");
+const { registerAdminYybGoRoutes } = require("./admin-yyb-go-routes");
 const userStore = require("../models/user-store");
 
 const adminLogger = createModuleLogger("admin");
@@ -582,6 +583,7 @@ function startAdminServer(dataProvider) {
   registerAdminQrLoginRoutes({ app });
   registerAdminNapcatLoginRoutes({ app });
   registerAdminProxyRoutes({ app, logger: adminLogger });
+  registerAdminYybGoRoutes({ app, requireAdminRole });
   registerSpaFallback(app, webDist);
 
   const subscribeSocketToAccount = (socket, accountRef = "") => {

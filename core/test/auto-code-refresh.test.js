@@ -34,3 +34,37 @@ test('WeChat accounts still report a missing wxid during Code refresh scheduling
   assert.equal(logs.length, 1);
   assert.equal(logs[0][1], '自动刷新 Code 未启动: 账号缺少 wxid');
 });
+
+test('YYB-Go accounts do not require a local wxid or loginBuffer', () => {
+  const logs = [];
+  const service = createService({
+    id: 'wx-remote', name: 'Remote WeChat', platform: 'wx',
+    loginType: 'yyb_go', yybAccountRef: '7',
+  }, logs);
+
+  service.scheduleAccount('wx-remote');
+
+  assert.deepEqual(logs, []);
+});
+
+test('YYB-Go accounts fetch a fresh code and restart with the updated account', async () => {
+  const account = {
+    id: 'wx-remote', name: 'Remote WeChat', platform: 'wx', code: 'expired',
+    loginType: 'yyb_go', yybAccountRef: '7',
+  };
+  let saved;
+  let restarted;
+  const service = createAutoCodeRefreshService({
+    store: { getAutoCodeRefresh: () => ({ enabled: true, intervalMinutes: 60 }) },
+    getAccounts: () => ({ accounts: [account] }),
+    addOrUpdateAccount: next => { saved = next; },
+    resolveWorkerControls: () => ({ restartWorker: next => { restarted = next; } }),
+    log: () => {},
+    addAccountLog: () => {},
+    yybGoClient: { getFarmCode: async ref => `fresh-code-for-${ref}` },
+  });
+
+  assert.equal(await service.refreshAccountCode(account.id, 'test'), true);
+  assert.equal(saved.code, 'fresh-code-for-7');
+  assert.equal(restarted.code, 'fresh-code-for-7');
+});

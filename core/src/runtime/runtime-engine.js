@@ -211,9 +211,11 @@ function createRuntimeEngine(options = {}) {
                         accountId: String(acc.id), accountName: acc.name
                     });
                 }
-                if (acc.platform === 'wx' && acc.loginBuffer) {
+                const canRefreshWxCode = acc.platform === 'wx'
+                    && (acc.loginBuffer || (acc.loginType === 'yyb_go' && acc.yybAccountRef));
+                if (canRefreshWxCode) {
                     const refreshed = await autoCodeRefresh.refreshAccountCode(acc.id, 'startup');
-                    if (!refreshed) startWorker(acc);
+                    if (!refreshed && acc.loginType !== 'yyb_go') startWorker(acc);
                 } else {
                     startWorker(acc);
                 }

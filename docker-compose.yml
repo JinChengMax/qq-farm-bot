@@ -11,6 +11,9 @@ services:
       - "3007:3007"               # 管理面板
       - "18000:18000"             # 抓包登录 MITM 代理端口（默认关闭，启用后供手机 Wi-Fi 代理连入）
 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     volumes:
       - ../data:/app/core/data
       - ../data/napcat/auth:/app/napcat-auth:ro
@@ -24,6 +27,10 @@ services:
       NAPCAT_LOGIN_ENABLED: "${NAPCAT_LOGIN_ENABLED:-false}"
       NAPCAT_WEBUI_URL: http://napcat:6099/api
       NAPCAT_OPENAUTH_URL: http://napcat:6099/plugin/qq-miniapp-openauth/api
+      # 复用独立 YYB-Go 的微信登录状态（两项同时配置后，添加账号中显示 YYB-Go）。
+      YYB_GO_URL: "${YYB_GO_URL:-}"
+      YYB_GO_TOKEN: "${YYB_GO_TOKEN:-}"
+      YYB_GO_TIMEOUT_MS: "${YYB_GO_TIMEOUT_MS:-15000}"
       # 抓包服务默认关闭；在面板“系统配置 → Code/GID 抓取服务”开启后才会运行。
       # 代理端口固定使用 18000：
       # CAPTURE_PORTS: "18000"

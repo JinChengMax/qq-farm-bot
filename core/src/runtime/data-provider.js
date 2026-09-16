@@ -375,14 +375,18 @@ function createDataProvider(deps) {
             return data;
         },
 
-        startAccount: async (ref) => {
+        startAccount: async (ref, options = {}) => {
             const id = resolveAccountId(ref);
             const account = findAccount(id || ref);
             if (!account) return false;
             if (typeof scheduleAutoCodeRefresh === 'function') scheduleAutoCodeRefresh(account.id);
-            if (account.platform === 'wx' && account.loginBuffer && typeof refreshAccountCode === 'function') {
+            const canRefreshWxCode = account.platform === 'wx'
+                && (account.loginBuffer || (account.loginType === 'yyb_go' && account.yybAccountRef));
+            if (!options.skipCredentialRefresh
+                && canRefreshWxCode && typeof refreshAccountCode === 'function') {
                 const refreshed = await refreshAccountCode(account.id, 'manual_start');
                 if (refreshed) return true;
+                if (account.loginType === 'yyb_go') return false;
             }
             startWorker(account);
             return true;
@@ -396,10 +400,17 @@ function createDataProvider(deps) {
             return true;
         },
 
-        restartAccount: (ref) => {
+        restartAccount: async (ref) => {
             const id = resolveAccountId(ref);
             const account = findAccount(id || ref);
             if (!account) return false;
+            const canRefreshWxCode = account.platform === 'wx'
+                && (account.loginBuffer || (account.loginType === 'yyb_go' && account.yybAccountRef));
+            if (canRefreshWxCode && typeof refreshAccountCode === 'function') {
+                const refreshed = await refreshAccountCode(account.id, 'manual_restart');
+                if (refreshed) return true;
+                if (account.loginType === 'yyb_go') return false;
+            }
             restartWorker(account);
             return true;
         },

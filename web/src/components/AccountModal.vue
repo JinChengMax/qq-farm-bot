@@ -4,6 +4,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import api from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
+import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
 import { useWxLoginStore } from '@/stores/wx-login'
 import { parseManualLoginInput } from '@/utils/gateway-url'
@@ -43,7 +44,7 @@ interface CaptureFlowState {
   }
 }
 
-const activeTab = ref<'wx' | 'qq' | 'capture' | 'manual'>('manual')
+const activeTab = ref<'wx' | 'qq' | 'yyb' | 'capture' | 'manual'>('manual')
 const loading = ref(false)
 const wxChecking = ref(false)
 const errorMessage = ref('')
@@ -56,6 +57,12 @@ const qqStatus = ref('点击获取二维码')
 const qqError = ref('')
 const qqLoading = ref(false)
 const qqQrCreatedAt = ref(0)
+const yybEnabled = ref(false)
+const yybLoading = ref(false)
+const yybError = ref('')
+const yybAccountRef = ref<string | number>('')
+const yybAccounts = ref<any[]>([])
+const yybAccountName = ref('')
 const captureEnabled = ref(false)
 const captureLoading = ref(false)
 const captureChecking = ref(false)
@@ -226,6 +233,71 @@ async function loadQqCapability() {
   }
   catch { qqEnabled.value = false }
 }
+
+async function loadYybCapability() {
+  try {
+    const { data } = await api.get('/api/yyb-go/capability')
+    yybEnabled.value = data?.ok && data.data?.enabled === true
+  }
+  catch {
+    yybEnabled.value = false
+  }
+}
+
+async function loadYybAccounts() {
+  if (!yybEnabled.value || yybLoading.value)
+    return
+  yybLoading.value = true
+  yybError.value = ''
+  try {
+    const { data } = await api.get('/api/yyb-go/accounts', { timeout: 20000, skipErrorToast: true } as any)
+    if (!data?.ok)
+      throw new Error(data?.error || '读取 YYB-Go 账号失败')
+    yybAccounts.value = Array.isArray(data.data?.accounts) ? data.data.accounts : []
+    if (!yybAccounts.value.some(account => String(account.id) === String(yybAccountRef.value)))
+      yybAccountRef.value = yybAccounts.value[0]?.id || ''
+  }
+  catch (e: any) {
+    yybAccounts.value = []
+    yybError.value = e.response?.data?.error || e.message || '读取 YYB-Go 账号失败'
+  }
+  finally {
+    yybLoading.value = false
+  }
+}
+
+async function importYybAccount() {
+  if (!yybAccountRef.value || yybLoading.value)
+    return
+  yybLoading.value = true
+  yybError.value = ''
+  try {
+    const selected = yybAccounts.value.find(account => String(account.id) === String(yybAccountRef.value))
+    const { data } = await api.post('/api/yyb-go/code', { ref: String(yybAccountRef.value) }, { timeout: 30000, skipErrorToast: true } as any)
+    if (!data?.ok || !data.data?.code)
+      throw new Error(data?.error || 'YYB-Go 未返回有效 Code')
+    await addAccount({
+      name: yybAccountName.value.trim() || selected?.display_name || `微信账号${yybAccountRef.value}`,
+      code: data.data.code,
+      platform: 'wx',
+      loginType: 'yyb_go',
+      yybAccountRef: String(yybAccountRef.value),
+      startAfterSave: true,
+    })
+  }
+  catch (e: any) {
+    yybError.value = e.response?.data?.error || e.message || '从 YYB-Go 登录失败'
+  }
+  finally {
+    yybLoading.value = false
+  }
+}
+
+const yybAccountOptions = computed(() => yybAccounts.value.map(account => ({
+  value: account.id,
+  label: `${account.display_name || `账号 ${account.id}`} · ${account.status === 'alive' ? '可用' : account.status || '未知'}`,
+  disabled: account.status === 'expired',
+})))
 
 async function cancelQqTask() {
   stopQqCheck()
@@ -504,6 +576,7 @@ watch(() => props.show, (newVal) => {
     captureHelpMode.value = localStorage.getItem(CAPTURE_SUCCESS_STORAGE_KEY) === '1' ? 'daily' : 'first'
     void loadCaptureConfig()
     void loadQqCapability()
+    void loadYybCapability()
     if (props.editData) {
       activeTab.value = 'manual'
       form.name = props.editData.name || ''
@@ -519,6 +592,9 @@ watch(() => props.show, (newVal) => {
       form.platform = 'qq'
       wxAccountName.value = ''
       qqAccountName.value = ''
+      yybAccountName.value = ''
+      yybAccountRef.value = ''
+      yybAccounts.value = []
     }
   }
   else {
@@ -537,6 +613,8 @@ watch(activeTab, (tab) => {
   }
   if (tab === 'wx')
     loadWxQRCode()
+  if (tab === 'yyb')
+    void loadYybAccounts()
   if (tab === 'qq' && !qqTaskId.value)
     void startQqLogin()
   if (tab !== 'qq')
@@ -563,7 +641,7 @@ watch(activeTab, (tab) => {
           {{ errorMessage }}
         </div>
 
-        <div class="mb-4 flex border-b" :style="{ borderColor: 'color-mix(in srgb, var(--theme-text) 10%, transparent)' }">
+        <div class="grid grid-cols-2 mb-4 border-b sm:grid-cols-5" :style="{ borderColor: 'color-mix(in srgb, var(--theme-text) 10%, transparent)' }">
           <button
             v-if="qqEnabled"
             class="flex-1 py-2 text-center text-sm font-medium transition-colors"
@@ -583,6 +661,18 @@ watch(activeTab, (tab) => {
             @click="activeTab = 'manual'"
           >
             手动填码
+          </button>
+          <button
+            v-if="yybEnabled && !editData"
+            class="flex-1 py-2 text-center text-sm font-medium transition-colors"
+            :class="activeTab === 'yyb' ? 'border-b-2' : 'opacity-60'"
+            :style="{
+              color: activeTab === 'yyb' ? 'var(--theme-primary)' : 'var(--theme-text)',
+              borderColor: 'var(--theme-primary)',
+            }"
+            @click="activeTab = 'yyb'"
+          >
+            YYB-Go
           </button>
           <button
             class="flex-1 py-2 text-center text-sm font-medium transition-colors"
@@ -686,6 +776,50 @@ watch(activeTab, (tab) => {
           <div class="text-center text-xs opacity-60" :style="{ color: 'var(--theme-text)' }">
             使用微信扫描二维码登录，成功后会自动添加账号
           </div>
+        </div>
+
+        <div v-if="activeTab === 'yyb'" class="space-y-4">
+          <BaseInput
+            v-model="yybAccountName"
+            label="账号备注（可选）"
+            placeholder="留空则使用 YYB-Go 账号名称"
+          />
+          <div class="flex items-end gap-2">
+            <div class="min-w-0 flex-1">
+              <BaseSelect
+                v-model="yybAccountRef"
+                label="YYB-Go 微信账号"
+                :options="yybAccountOptions"
+                :disabled="yybLoading"
+                placeholder="请选择已登录账号"
+              />
+            </div>
+            <BaseButton
+              variant="ghost"
+              class="h-10 w-10 flex-none !p-0"
+              title="刷新账号列表"
+              :disabled="yybLoading"
+              @click="loadYybAccounts"
+            >
+              <span class="i-carbon-renew text-lg" :class="{ 'animate-spin': yybLoading }" />
+            </BaseButton>
+          </div>
+          <p v-if="yybError" class="text-sm text-red-600">
+            {{ yybError }}
+          </p>
+          <div v-if="!yybLoading && yybAccounts.length === 0 && !yybError" class="py-5 text-center text-sm opacity-60" :style="{ color: 'var(--theme-text)' }">
+            YYB-Go 中暂无可用账号
+          </div>
+          <BaseButton
+            variant="primary"
+            block
+            :loading="yybLoading"
+            :disabled="!yybAccountRef"
+            @click="importYybAccount"
+          >
+            <span class="i-carbon-login mr-2" />
+            登录农场
+          </BaseButton>
         </div>
 
         <div v-if="activeTab === 'capture'" class="space-y-4">

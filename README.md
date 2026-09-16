@@ -116,6 +116,28 @@ CAPTURE_ADVERTISE_IPS=192.168.1.100,100.64.0.2
 
 项目支持微信扫码、QQ/NapCat 扫码、手动填码和手机抓包等账号添加方式。
 
+### 复用独立 YYB-Go 微信账号
+
+`qq-farm-bot` 可以只向独立 YYB-Go 请求一次性的农场 `wx.login code`，无需再次扫码，也不会复制
+YYB-Go 保存的 `loginBuffer`、refresh token 等长期凭据。配置后，在“添加账号 → YYB-Go”选择已登录账号即可。
+
+YYB-Go：
+
+```dotenv
+YYB_INTEGRATION_TOKEN=请生成一段高强度随机字符串
+```
+
+qq-farm-bot：
+
+```dotenv
+YYB_GO_URL=http://host.docker.internal:8000
+YYB_GO_TOKEN=与YYB_INTEGRATION_TOKEN完全相同
+```
+
+Compose 已为 Linux 配置宿主机网关，YYB-Go 默认发布的 `8000` 端口可通过上述地址访问。两个项目位于
+同一 Docker 网络时，也可改用 `http://yyb-go:8000`。导入后，每次启动、手动重启和自动重登都会
+实时申请新 code；code 仍按微信规则一次性消费，不会在两个任务之间复用。
+
 ### QQ/NapCat 扫码（Docker，可选）
 
 NapCat 默认不启动，低配置机器继续使用原来的启动命令即可：

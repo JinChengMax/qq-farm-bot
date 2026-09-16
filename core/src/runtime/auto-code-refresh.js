@@ -1,5 +1,11 @@
 const { createScheduler } = require('../services/scheduler');
 const wxLoginAdapter = require('../services/wx-login-adapter');
+const yybGoClient = require('../services/yyb-go-client');
+
+function isRemoteYybAccount(account) {
+  return account && account.loginType === 'yyb_go'
+    && !!String(account.yybAccountRef || '').trim();
+}
 
 function createAutoCodeRefreshService(deps) {
   const {
@@ -10,6 +16,7 @@ function createAutoCodeRefreshService(deps) {
     log,
     addAccountLog,
   } = deps;
+  const remoteYybClient = deps.yybGoClient || yybGoClient;
 
   const scheduler = createScheduler('auto_code_refresh');
   const recoveryState = new Map();
@@ -55,6 +62,9 @@ function createAutoCodeRefreshService(deps) {
   }
 
   async function requestFarmCode(account) {
+    if (isRemoteYybAccount(account)) {
+      return remoteYybClient.getFarmCode(account.yybAccountRef);
+    }
     const wxid = String(account && account.wxid || '').trim();
     if (!wxid) throw new Error('账号缺少 wxid，无法自动刷新 Code');
 
@@ -120,7 +130,7 @@ function createAutoCodeRefreshService(deps) {
     // All accounts are passed through rescheduleAll(), so QQ accounts must exit quietly.
     if (!account || account.platform !== 'wx') return;
 
-    if (!String(account.wxid || '').trim()) {
+    if (!isRemoteYybAccount(account) && !String(account.wxid || '').trim()) {
       log('系统', '自动刷新 Code 未启动: 账号缺少 wxid', {
         accountId: String(accountId),
         accountName: account.name || '',
@@ -128,7 +138,7 @@ function createAutoCodeRefreshService(deps) {
       return;
     }
 
-    if (account.loginBuffer && account.refreshtoken) {
+    if (!isRemoteYybAccount(account) && account.loginBuffer && account.refreshtoken) {
       scheduler.setIntervalTask(getKeepaliveTaskName(accountId), 30 * 60000, async () => {
         const latest = findAccount(accountId);
         if (!latest) return;
@@ -172,7 +182,7 @@ function createAutoCodeRefreshService(deps) {
     const cfg = normalizeConfig(accountId);
     if (!cfg.enabled) return false;
     const account = findAccount(accountId);
-    if (!account || !account.loginBuffer) return false;
+    if (!account || (!account.loginBuffer && !isRemoteYybAccount(account))) return false;
     const recovery = getRecoveryState(accountId);
     if (recovery.attempts >= MAX_DAILY_RECOVERIES
       || recovery.failures >= MAX_CONSECUTIVE_FAILURES) {
@@ -200,4 +210,4 @@ function createAutoCodeRefreshService(deps) {
   };
 }
 
-module.exports = { createAutoCodeRefreshService };
+module.exports = { createAutoCodeRefreshService, isRemoteYybAccount };

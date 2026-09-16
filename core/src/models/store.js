@@ -1622,6 +1622,7 @@ function addOrUpdateAccount(account) {
             loginBuffer: account.loginBuffer ? String(account.loginBuffer) : '',
             refreshtoken: account.refreshtoken ? String(account.refreshtoken) : '',
             accesstoken: account.accesstoken ? String(account.accesstoken) : '',
+            yybAccountRef: account.yybAccountRef ? String(account.yybAccountRef) : '',
             wxDefaultsApplied: account.wxDefaultsApplied === true,
             uin: account.uin ? String(account.uin) : '',
             qq: account.qq ? String(account.qq) : (account.uin ? String(account.uin) : ''),

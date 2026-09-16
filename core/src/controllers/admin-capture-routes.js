@@ -434,11 +434,21 @@ function scheduleCapturedAccountStart({
 }) {
   const timer = schedule(() => {
     try {
+      let startOperation;
       if (isUpdate) {
-        if (wasRunning) provider.restartAccount(account.id);
+        if (wasRunning) startOperation = provider.restartAccount(account.id);
       } else {
-        provider.startAccount(account.id);
+        startOperation = provider.startAccount(account.id);
       }
+      Promise.resolve(startOperation).catch((error) => {
+        const startError = error.message || "账号启动失败";
+        if (flow.result) flow.result.startError = startError;
+        logger.warn("抓包登录账号已添加，但延迟启动失败", {
+          owner: flow.owner,
+          accountId: account.id,
+          error: startError,
+        });
+      });
     } catch (error) {
       const startError = error.message || "账号启动失败";
       if (flow.result) flow.result.startError = startError;

@@ -221,6 +221,14 @@ function registerAdminAccountRoutes({
         currentUser &&
         (currentUser.role === "admin" || currentUser.role === "super_admin");
 
+      if (body.loginType === "yyb_go"
+        && (body.platform !== "wx" || !String(body.yybAccountRef || "").trim())) {
+        return res.status(400).json({ ok: false, error: "YYB-Go 账号缺少有效的账号引用" });
+      }
+      if (body.loginType === "yyb_go" && !isAdmin) {
+        return res.status(403).json({ ok: false, error: "导入 YYB-Go 账号需要管理员权限" });
+      }
+
       if (isUpdate && currentUser && !isAdmin) {
         if (!canAccessAccount(req, resolveAccountReference(body.id))) {
           return res.status(403).json({ ok: false, error: "无权访问此账号" });
@@ -327,7 +335,10 @@ function registerAdminAccountRoutes({
           const isNativeWxScan = created.platform === "wx"
             && created.loginType === "wx_qr"
             && !!body.wxSessionId;
-          if (isNativeWxScan && typeof provider.saveAutoCodeRefresh === "function") {
+          const isYybGoAccount = created.platform === "wx"
+            && created.loginType === "yyb_go"
+            && !!created.yybAccountRef;
+          if ((isNativeWxScan || isYybGoAccount) && typeof provider.saveAutoCodeRefresh === "function") {
             await provider.saveAutoCodeRefresh(created.id, {
               enabled: true,
               intervalMinutes: 60,
@@ -337,7 +348,9 @@ function registerAdminAccountRoutes({
           // 启动微信账号会包含凭证续期和 MMTLS 换 Code，不能阻塞新增账号响应。
           // 账号与刷新策略落盘后立即返回，启动任务在后台继续执行。
           startQueued = true;
-          Promise.resolve(provider.startAccount(created.id)).catch((error) => {
+          Promise.resolve(provider.startAccount(created.id, {
+            skipCredentialRefresh: isYybGoAccount,
+          })).catch((error) => {
             if (provider.addAccountLog) {
               provider.addAccountLog(
                 "start_failed",
